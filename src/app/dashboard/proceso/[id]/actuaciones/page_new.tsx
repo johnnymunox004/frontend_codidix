@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { notFound, useParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { notFound } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import Link from 'next/link';
 import { 
@@ -15,13 +15,18 @@ import {
   FiSearch,
   FiCalendar
 } from 'react-icons/fi';
-import { 
-  consultarDetalleProceso, 
-  consultarActuacionesProceso, 
-  consultarDocumentosActuacion,
-  Proceso, 
-  Actuacion 
-} from '@/services/api';
+import { consultarDetalleProceso, consultarActuacionesProceso, Proceso } from '@/services/api';
+
+// Tipo para las actuaciones del proceso
+interface Actuacion {
+  idActuacion: number;
+  idProceso: number;
+  fechaActuacion: string;
+  actuacion: string;
+  anotacion: string;
+  fechaRegistro: string;
+  documento?: string;
+}
 
 interface ActuacionesPageProps {
   params: {
@@ -30,67 +35,36 @@ interface ActuacionesPageProps {
   searchParams?: { [key: string]: string | string[] | undefined };
 }
 
-export default function ActuacionesPage() {
-  const params = useParams();
-  const id = params.id as string;
+export default function ActuacionesPage({ params }: ActuacionesPageProps) {
+  const { id } = params;
   const [proceso, setProceso] = useState<Proceso | null>(null);
   const [actuaciones, setActuaciones] = useState<Actuacion[]>([]);
-  const [documentosPorActuacion, setDocumentosPorActuacion] = useState<Record<number, number>>({});
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [filtroTexto, setFiltroTexto] = useState("");
   
   useEffect(() => {
-    const cargarDetalleProceso = async () => {      try {
+    const cargarDetalleProceso = async () => {
+      try {
         setCargando(true);
         const respuesta = await consultarDetalleProceso(id);
         
         if (respuesta.procesos && respuesta.procesos.length > 0) {
           setProceso(respuesta.procesos[0]);
-            // Cargar actuaciones
+          
+          // Cargar actuaciones
           try {
             const actuacionesData = await consultarActuacionesProceso(id);
             setActuaciones(actuacionesData);
-            
-            // Cargar conteos de documentos para cada actuación
-            const conteoDocumentos: Record<number, number> = {};
-            
-            // Solo procesamos las primeras 10 actuaciones para no sobrecargar la API
-            const actuacionesParaProcesar = actuacionesData.slice(0, 10);
-              // Cargamos documentos para cada actuación para obtener su conteo
-            await Promise.all(
-              actuacionesParaProcesar.map(async (actuacion) => {
-                try {
-                  const docs = await consultarDocumentosActuacion(actuacion.idRegActuacion);
-                  conteoDocumentos[actuacion.idRegActuacion] = Array.isArray(docs) ? docs.length : 0;
-                } catch (err) {
-                  console.error(`Error al cargar documentos para actuación ${actuacion.idRegActuacion}:`, err);
-                  conteoDocumentos[actuacion.idRegActuacion] = 0;
-                }
-              })
-            );
-            
-            setDocumentosPorActuacion(conteoDocumentos);
           } catch (err) {
             console.error("Error al cargar actuaciones:", err);
-            if (err instanceof Error && err.message.includes('404')) {
-              // Si no hay actuaciones pero el proceso existe, mostramos vacío en vez de error
-              setActuaciones([]);
-            } else {
-              setError("Error al cargar actuaciones: " + (err instanceof Error ? err.message : String(err)));
-            }
+            setActuaciones([]);
           }
         } else {
-          // Utilizamos notFound() para manejar el caso donde no se encuentra el proceso
-          notFound();
+          setError("No se encontró información del proceso");
         }
       } catch (err) {
-        // Verificamos si es un error 404 para mostrar notFound
-        if (err instanceof Error && err.message.includes('404')) {
-          notFound();
-        } else {
-          setError("Error al cargar detalles del proceso: " + (err instanceof Error ? err.message : String(err)));
-        }
+        setError("Error al cargar detalles del proceso: " + (err instanceof Error ? err.message : String(err)));
       } finally {
         setCargando(false);
       }
@@ -126,11 +100,9 @@ export default function ActuacionesPage() {
       </DashboardLayout>
     );
   }
-    // Verificar que actuaciones sea un array antes de trabajar con él
-  const actuacionesArray = Array.isArray(actuaciones) ? actuaciones : [];
   
   // Ordenar actuaciones por fecha, de la más reciente a la más antigua
-  const actuacionesOrdenadas = [...actuacionesArray].sort(
+  const actuacionesOrdenadas = [...actuaciones].sort(
     (a, b) => new Date(b.fechaActuacion).getTime() - new Date(a.fechaActuacion).getTime()
   );
   
@@ -233,7 +205,7 @@ export default function ActuacionesPage() {
               Documentos
             </Link>
           </li>
-
+  
         </ul>
       </div>
       
@@ -281,16 +253,9 @@ export default function ActuacionesPage() {
                     {actuacionesPorFecha[yearMonth].map((actuacion) => (
                       <div key={actuacion.idActuacion} className="p-6">
                         <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-center">
-                            <h3 className="font-medium text-gray-800">
-                              {actuacion.actuacion}
-                            </h3>
-                            {documentosPorActuacion[actuacion.idActuacion] > 0 && (
-                              <span className="ml-2 bg-indigo-100 text-indigo-800 text-xs font-medium px-2 py-0.5 rounded-full">
-                                {documentosPorActuacion[actuacion.idActuacion]} doc.
-                              </span>
-                            )}
-                          </div>
+                          <h3 className="font-medium text-gray-800">
+                            {actuacion.actuacion}
+                          </h3>
                           <span className="text-sm text-gray-500">{formatearFecha(actuacion.fechaActuacion)}</span>
                         </div>
                         
@@ -304,15 +269,12 @@ export default function ActuacionesPage() {
                           </span>
                           
                           {/* Acciones */}
-                          <div className="flex space-x-2">                            <Link 
-                              href={`/dashboard/proceso/${id}/documentos?idActuacion=${actuacion.idRegActuacion}`}
-                              className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
-                            >
-                              <FiFileText className="mr-1" /> 
-                              {documentosPorActuacion[actuacion.idRegActuacion] > 0 
-                                ? `Ver ${documentosPorActuacion[actuacion.idRegActuacion]} Documentos` 
-                                : "Ver Documentos"}
-                            </Link>
+                          <div className="flex space-x-2">
+                            {actuacion.documento && (
+                              <button className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center">
+                                <FiDownload className="mr-1" /> Documento
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -331,17 +293,11 @@ export default function ActuacionesPage() {
               <h2 className="text-lg font-semibold text-gray-800">Resumen</h2>
             </div>
             
-            <div className="p-6">              <div className="space-y-4">
+            <div className="p-6">
+              <div className="space-y-4">
                 <div>
                   <h3 className="text-sm font-medium text-gray-500 mb-1">Total Actuaciones</h3>
                   <p className="text-2xl font-semibold text-gray-800">{actuaciones.length}</p>
-                </div>
-                
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500 mb-1">Actuaciones con Documentos</h3>
-                  <p className="text-gray-800">
-                    {Object.values(documentosPorActuacion).filter(count => count > 0).length} de {Object.keys(documentosPorActuacion).length} consultadas
-                  </p>
                 </div>
                 
                 <div>
@@ -350,14 +306,8 @@ export default function ActuacionesPage() {
                     {proceso.fechaUltimaActuacion ? formatearFecha(proceso.fechaUltimaActuacion) : 'N/A'}
                   </p>
                 </div>
-                  <div className="border-t pt-4 space-y-3">
-                  <Link 
-                    href={`/dashboard/proceso/${id}/documentos`}
-                    className="text-indigo-600 hover:text-indigo-800 font-medium text-sm flex items-center"
-                  >
-                    <FiFileText className="mr-1.5" /> Ver todos los documentos
-                  </Link>
-                  
+                
+                <div className="border-t pt-4">
                   <a 
                     href={`https://consultaprocesos.ramajudicial.gov.co:448/consultaprocesos/ConsultaJusticias21.aspx?NumRadicacion=${proceso.llaveProceso}`}
                     target="_blank"

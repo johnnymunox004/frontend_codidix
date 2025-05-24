@@ -1,7 +1,7 @@
 "use client";
 
-import { notFound } from 'next/navigation';
-import { buscarProcesoPorId } from '@/data/mockData';
+import React, { useEffect, useState } from 'react';
+import { notFound, useParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import Link from 'next/link';
 import { 
@@ -13,8 +13,11 @@ import {
   FiMap,
   FiBriefcase,
   FiTag,
-  FiDownload
+  FiDownload,
+  FiAlertCircle,
+  FiExternalLink
 } from 'react-icons/fi';
+import { consultarDetalleProceso, consultarActuacionesProceso, Proceso, Actuacion } from '@/services/api';
 
 interface ProcesoDetalleProps {
   params: {
@@ -22,20 +25,120 @@ interface ProcesoDetalleProps {
   };
 }
 
-export default function ProcesoDetallePage({ params }: ProcesoDetalleProps) {
-  const { id } = params;
-  const proceso = buscarProcesoPorId(id);
+export default function ProcesoDetallePage() {
+  const params = useParams();
+  const id = params.id as string;
+  const [proceso, setProceso] = useState<Proceso | null>(null);
+  const [actuaciones, setActuaciones] = useState<Actuacion[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
   
-  if (!proceso) {
-    notFound();
+  useEffect(() => {
+    const cargarDetalleProceso = async () => {      try {
+        setCargando(true);
+        const respuesta = await consultarDetalleProceso(id);
+        
+        if (respuesta.procesos && respuesta.procesos.length > 0) {
+          setProceso(respuesta.procesos[0]);
+          
+          // Cargar actuaciones
+          try {
+            const actuacionesData = await consultarActuacionesProceso(id);
+            setActuaciones(actuacionesData);
+          } catch (err) {
+            console.error("Error al cargar actuaciones:", err);
+            // No interrumpimos la carga del proceso si las actuaciones fallan
+            setActuaciones([]);
+          }
+        } else {
+          // Utilizamos notFound() para manejar el caso donde no se encuentra el proceso
+          notFound();
+        }
+      } catch (err) {
+        // Verificamos si es un error 404 para mostrar notFound
+        if (err instanceof Error && err.message.includes('404')) {
+          notFound();
+        } else {
+          setError("Error al cargar detalles del proceso: " + (err instanceof Error ? err.message : String(err)));
+        }
+      } finally {
+        setCargando(false);
+      }
+    };
+    
+    cargarDetalleProceso();
+  }, [id]);
+  
+  if (cargando) {
+    return (
+      <DashboardLayout>
+        <div className="bg-white rounded-lg shadow p-12 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-indigo-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Cargando detalles del proceso...</p>
+        </div>
+      </DashboardLayout>
+    );
   }
   
+  if (error || !proceso) {
+    return (
+      <DashboardLayout>
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6 flex items-start">
+          <FiAlertCircle className="mr-2 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">Error al cargar detalles del proceso</p>
+            <p className="text-sm">{error || "No se pudo encontrar el proceso solicitado"}</p>
+            <Link href="/dashboard/consulta" className="text-red-700 underline text-sm mt-2 inline-block">
+              Volver al formulario de consulta
+            </Link>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+    // Verificar que actuaciones sea un array antes de trabajar con él
+  const actuacionesArray = Array.isArray(actuaciones) ? actuaciones : [];
+  
   // Ordenar actuaciones por fecha, de la más reciente a la más antigua
-  const actuacionesOrdenadas = [...proceso.actuaciones].sort(
-    (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+  const actuacionesOrdenadas = [...actuacionesArray].sort(
+    (a, b) => new Date(b.fechaActuacion).getTime() - new Date(a.fechaActuacion).getTime()
   );
   
-  const ultimaActuacion = actuacionesOrdenadas[0];
+  const ultimaActuacion = actuacionesOrdenadas.length > 0 ? actuacionesOrdenadas[0] : null;
+  
+  // Extraer demandante y demandado de sujetosProcesales
+  const extraerPartes = (sujetosProcesales: string) => {
+    // Intentamos dividir los sujetos por |
+    const partes = sujetosProcesales.split('|').map(parte => parte.trim());
+    
+    if (partes.length >= 2) {
+      const demandante = partes[0].replace(/^Demandante:/i, '').trim();
+      const demandado = partes[1].replace(/^Demandado:/i, '').trim();
+      return { demandante, demandado };
+    }
+    
+    // Si no podemos dividir claramente, usamos todo como demandante
+    return { 
+      demandante: sujetosProcesales, 
+      demandado: "No especificado" 
+    };
+  };
+  
+  const { demandante, demandado } = extraerPartes(proceso.sujetosProcesales || "");
+  
+  // Formatear fecha
+  const formatearFecha = (fechaString: string) => {
+    try {
+      const fecha = new Date(fechaString);
+      return fecha.toLocaleDateString('es-CO', { 
+        day: '2-digit', 
+        month: 'long', 
+        year: 'numeric' 
+      });
+    } catch (e) {
+      return fechaString || "No disponible";
+    }
+  };
   
   return (
     <DashboardLayout>
@@ -46,18 +149,23 @@ export default function ProcesoDetallePage({ params }: ProcesoDetalleProps) {
           </Link>
           <div>
             <h1 className="text-2xl font-bold text-gray-800">
-              Proceso {proceso.radicado}
+              Proceso {proceso.llaveProceso}
             </h1>
-            <p className="text-gray-600">{proceso.juzgado}</p>
+            <p className="text-gray-600">{proceso.despacho}</p>
           </div>
         </div>
         
         <div className="flex items-center space-x-2">
-          <button className="bg-white text-indigo-600 border border-indigo-600 hover:bg-indigo-50 font-medium py-1.5 px-3 rounded-md text-sm flex items-center">
-            <FiDownload className="mr-1.5" /> Descargar
-          </button>
+          <a 
+            href={`https://consultaprocesos.ramajudicial.gov.co:448/consultaprocesos/ConsultaJusticias21.aspx?NumRadicacion=${proceso.llaveProceso}`} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="bg-white text-indigo-600 border border-indigo-600 hover:bg-indigo-50 font-medium py-1.5 px-3 rounded-md text-sm flex items-center"
+          >
+            <FiExternalLink className="mr-1.5" /> Ver en Rama Judicial
+          </a>
           <button className="bg-indigo-600 text-white hover:bg-indigo-700 font-medium py-1.5 px-3 rounded-md text-sm">
-            Editar
+            Guardar
           </button>
         </div>
       </div>
@@ -90,14 +198,7 @@ export default function ProcesoDetallePage({ params }: ProcesoDetalleProps) {
               Documentos
             </Link>
           </li>
-          <li className="mr-1">
-            <Link 
-              href={`/dashboard/proceso/${id}/notas`}
-              className="inline-block py-3 px-4 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent hover:border-gray-300 rounded-t-lg"
-            >
-              Notas
-            </Link>
-          </li>
+  
         </ul>
       </div>
       
@@ -116,16 +217,23 @@ export default function ProcesoDetallePage({ params }: ProcesoDetalleProps) {
                 <div>
                   <div className="mb-4">
                     <h3 className="text-sm font-medium text-gray-500 mb-1 flex items-center">
-                      <FiMap className="mr-1 text-gray-400" /> Juzgado
+                      <FiMap className="mr-1 text-gray-400" /> Despacho
                     </h3>
-                    <p className="text-gray-800">{proceso.juzgado}</p>
+                    <p className="text-gray-800">{proceso.despacho}</p>
                   </div>
                   
                   <div className="mb-4">
                     <h3 className="text-sm font-medium text-gray-500 mb-1 flex items-center">
-                      <FiBriefcase className="mr-1 text-gray-400" /> Tipo de Proceso
+                      <FiMap className="mr-1 text-gray-400" /> Departamento
                     </h3>
-                    <p className="text-gray-800">{proceso.tipo}</p>
+                    <p className="text-gray-800">{proceso.departamento}</p>
+                  </div>
+                  
+                  <div className="mb-4">
+                    <h3 className="text-sm font-medium text-gray-500 mb-1 flex items-center">
+                      <FiBriefcase className="mr-1 text-gray-400" /> Llave del Proceso
+                    </h3>
+                    <p className="text-gray-800">{proceso.llaveProceso}</p>
                   </div>
                   
                   <div className="mb-4">
@@ -133,7 +241,7 @@ export default function ProcesoDetallePage({ params }: ProcesoDetalleProps) {
                       <FiTag className="mr-1 text-gray-400" /> Estado
                     </h3>
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      {proceso.estado}
+                      {proceso.esPrivado ? "Privado" : "Público"}
                     </span>
                   </div>
                 </div>
@@ -141,23 +249,26 @@ export default function ProcesoDetallePage({ params }: ProcesoDetalleProps) {
                 <div>
                   <div className="mb-4">
                     <h3 className="text-sm font-medium text-gray-500 mb-1 flex items-center">
-                      <FiCalendar className="mr-1 text-gray-400" /> Fecha Inicio
+                      <FiCalendar className="mr-1 text-gray-400" /> Fecha Proceso
                     </h3>
-                    <p className="text-gray-800">{proceso.fechaInicio}</p>
+                    <p className="text-gray-800">{formatearFecha(proceso.fechaProceso)}</p>
                   </div>
                   
                   <div className="mb-4">
                     <h3 className="text-sm font-medium text-gray-500 mb-1 flex items-center">
-                      <FiUser className="mr-1 text-gray-400" /> Demandante
+                      <FiCalendar className="mr-1 text-gray-400" /> Última Actuación
                     </h3>
-                    <p className="text-gray-800">{proceso.partes.demandante}</p>
+                    <p className="text-gray-800">{formatearFecha(proceso.fechaUltimaActuacion)}</p>
                   </div>
                   
                   <div className="mb-4">
                     <h3 className="text-sm font-medium text-gray-500 mb-1 flex items-center">
-                      <FiUser className="mr-1 text-gray-400" /> Demandado
+                      <FiUser className="mr-1 text-gray-400" /> Sujetos Procesales
                     </h3>
-                    <p className="text-gray-800">{proceso.partes.demandado}</p>
+                    <p className="text-gray-800 text-sm">
+                      <span className="font-medium">Demandante:</span> {demandante}<br/>
+                      <span className="font-medium">Demandado:</span> {demandado}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -177,22 +288,12 @@ export default function ProcesoDetallePage({ params }: ProcesoDetalleProps) {
                 <div>
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="font-medium text-gray-800">
-                      {ultimaActuacion.descripcion}
+                      {ultimaActuacion.actuacion}
                     </h3>
-                    <span className="text-sm text-gray-500">{ultimaActuacion.fecha}</span>
+                    <span className="text-sm text-gray-500">{formatearFecha(ultimaActuacion.fechaActuacion)}</span>
                   </div>
-                  {ultimaActuacion.resumen && (
-                    <p className="text-gray-600 mb-4">{ultimaActuacion.resumen}</p>
-                  )}
-                  {ultimaActuacion.documento && (
-                    <div className="mt-2">
-                      <Link 
-                        href={ultimaActuacion.documento} 
-                        className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
-                      >
-                        <FiDownload className="mr-1" /> Descargar documento
-                      </Link>
-                    </div>
+                  {ultimaActuacion.anotacion && (
+                    <p className="text-gray-600 mb-4">{ultimaActuacion.anotacion}</p>
                   )}
                 </div>
               ) : (
@@ -213,13 +314,13 @@ export default function ProcesoDetallePage({ params }: ProcesoDetalleProps) {
               <div className="space-y-4">
                 <div>
                   <h3 className="text-sm font-medium text-gray-500 mb-1">Total Actuaciones</h3>
-                  <p className="text-2xl font-semibold text-gray-800">{proceso.actuaciones.length}</p>
+                  <p className="text-2xl font-semibold text-gray-800">{actuaciones.length}</p>
                 </div>
                 
                 <div>
                   <h3 className="text-sm font-medium text-gray-500 mb-1">Última Actualización</h3>
                   <p className="text-gray-800">
-                    {ultimaActuacion ? ultimaActuacion.fecha : 'N/A'}
+                    {formatearFecha(proceso.fechaUltimaActuacion)}
                   </p>
                 </div>
                 
@@ -239,14 +340,14 @@ export default function ProcesoDetallePage({ params }: ProcesoDetalleProps) {
             <h2 className="text-indigo-800 font-medium mb-2">Acciones Rápidas</h2>
             <ul className="space-y-2">
               <li>
-                <button className="text-indigo-600 hover:text-indigo-800 text-sm">
-                  Agregar nueva actuación
-                </button>
-              </li>
-              <li>
-                <button className="text-indigo-600 hover:text-indigo-800 text-sm">
-                  Subir documento
-                </button>
+                <a 
+                  href={`https://consultaprocesos.ramajudicial.gov.co:448/consultaprocesos/ConsultaJusticias21.aspx?NumRadicacion=${proceso.llaveProceso}`}
+                  target="_blank"
+                  rel="noopener noreferrer" 
+                  className="text-indigo-600 hover:text-indigo-800 text-sm flex items-center"
+                >
+                  <FiExternalLink className="mr-1.5" /> Ver en Rama Judicial
+                </a>
               </li>
               <li>
                 <button className="text-indigo-600 hover:text-indigo-800 text-sm">
