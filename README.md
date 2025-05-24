@@ -1,4 +1,23 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Codidix - Sistema de Gestión de Procesos Judiciales
+
+Codidix es una aplicación web moderna desarrollada con Next.js, TypeScript y Tailwind CSS para la gestión de procesos judiciales, diseñada para abogados, asistentes legales y clientes.
+
+## Características
+
+- **Dashboard Completo**: Visualización rápida de estadísticas y procesos relevantes
+- **Consulta de Procesos**: Búsqueda y filtrado avanzado de procesos judiciales
+- **Detalles de Procesos**: Visualización detallada de información de cada proceso
+- **Actuaciones**: Seguimiento cronológico de actuaciones judiciales
+- **Sistema de Alertas**: Notificaciones sobre audiencias, vencimientos y requerimientos
+- **Perfil de Usuario**: Gestión de información personal y preferencias
+- **Asistente Virtual**: Chat con IA para resolver consultas sobre procesos y términos legales
+
+## Tecnologías Utilizadas
+
+- **Next.js 14**: Framework React con renderizado híbrido
+- **TypeScript**: Tipado estático para desarrollo robusto
+- **Tailwind CSS**: Framework de utilidades para diseño responsive
+- **Clerk**: Autenticación segura y gestión de usuarios
 
 ## Getting Started
 
@@ -15,10 +34,6 @@ bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More
 
