@@ -17,6 +17,7 @@ interface ActuacionesPageProps {
   params: {
     id: string;
   };
+  searchParams?: { [key: string]: string | string[] | undefined };
 }
 
 export default function ActuacionesPage({ params }: ActuacionesPageProps) {
