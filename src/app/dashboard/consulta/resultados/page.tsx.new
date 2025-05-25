@@ -1,0 +1,25 @@
+import { Suspense } from "react";
+import DashboardLayout from "@/components/DashboardLayout";
+import dynamic from 'next/dynamic';
+
+// Import the client component dynamically to ensure proper client-side rendering
+const ResultadosConsultaClient = dynamic(
+  () => import('./resultados-cliente').then((mod) => mod.ResultadosConsulta),
+  { ssr: false }
+);
+
+// Página principal que envuelve el componente cliente con un límite de suspense
+export default function ResultadosConsultaPage() {
+  return (
+    <DashboardLayout>
+      <Suspense fallback={
+        <div className="bg-white rounded-lg shadow p-12 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-indigo-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Cargando resultados de consulta...</p>
+        </div>
+      }>
+        <ResultadosConsultaClient />
+      </Suspense>
+    </DashboardLayout>
+  );
+}
